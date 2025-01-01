@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/bboe/update_checker.png)](https://travis-ci.org/bboe/update_checker)
+Fork of [bboe/update-checker](https://github.com/bboe/update_checker)
 
 # update_checker
 
@@ -11,7 +11,7 @@ author for information on adding a package to the whitelist.
 
 The update_checker module can be installed via:
 
-    pip install update_checker
+    pip install update_checker_rg
 
 ### Usage
 

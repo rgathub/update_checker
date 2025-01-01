@@ -19,17 +19,18 @@ extras["dev"] += extras["lint"] + extras["test"]
 
 setup(
     name=MODULE_NAME,
-    author="Bryce Boe",
-    author_email="bbzbryce@gmail.com",
+    author="Rahul Gupta",
     classifiers=[
         "Intended Audience :: Developers",
         "License :: OSI Approved :: BSD License",
         "Operating System :: OS Independent",
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.6",
-        "Programming Language :: Python :: 3.7",
-        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
+        "Topic :: Software Development :: Libraries :: Python Modules",
     ],
     description="A python module that will check for package updates.",
     extras_require=extras,
@@ -38,6 +39,6 @@ setup(
     long_description=README,
     long_description_content_type="text/markdown",
     py_modules=[MODULE_NAME, f"{MODULE_NAME}_test"],
-    url="https://github.com/bboe/update_checker",
+    url="https://github.com/rgathub/update_checker",
     version=VERSION,
 )
