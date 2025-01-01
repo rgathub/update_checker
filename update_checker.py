@@ -9,7 +9,7 @@ from datetime import datetime
 from functools import wraps
 from tempfile import gettempdir
 
-__version__ = "0.18.0"
+__version__ = "0.19.0"
 
 
 def cache_results(function):
@@ -157,7 +157,7 @@ def pretty_date(the_datetime):
     """Attempt to return a human-readable time delta string."""
     # Source modified from
     # http://stackoverflow.com/a/5164027/176978
-    diff = datetime.utcnow() - the_datetime
+    diff = datetime.now(datetime.timezone.utc) - the_datetime
     if diff.days > 7 or diff.days < 0:
         return the_datetime.strftime("%A %B %d, %Y")
     elif diff.days == 1:
