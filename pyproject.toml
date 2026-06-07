@@ -4,7 +4,7 @@ requires = ["uv_build>=0.8.0,<1.0"]
 
 [dependency-groups]
 dev = [{include-group = "lint"}, {include-group = "test"}]
-lint = ["ruff"]
+lint = ["pre-commit", "ruff"]
 test = ["pytest"]
 
 [project]
@@ -32,5 +32,24 @@ version = "0.18.0"
 [project.urls]
 Homepage = "https://github.com/bboe/update_checker"
 
+[tool.ruff]
+preview = true
+
 [tool.ruff.lint]
-extend-select = ["I"]
+ignore = [
+    "COM812",  # conflicts with the formatter
+    "CPY001",  # this project does not use copyright notices
+    "D203",  # incompatible with D211
+    "D213",  # incompatible with D212
+    "DOC201",  # docstrings do not use Returns sections
+    "PLR2004",  # inline comparison values are clear in context
+    "RUF067",  # the package intentionally lives in __init__.py
+]
+select = ["ALL"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+    "D103",  # test functions do not need docstrings
+    "INP001",  # the tests directory is intentionally not a package
+    "S101",  # pytest relies on assert
+]

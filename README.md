@@ -20,7 +20,8 @@ use the following bit of code:
 
 ```python
 from update_checker import update_check
-update_check('praw', '0.0.1')
+
+update_check("praw", "0.0.1")
 ```
 
 If you need more control, such as performing operations conditionally when
@@ -28,14 +29,15 @@ there is an update you can use the following approach:
 
 ```python
 from update_checker import UpdateChecker
+
 checker = UpdateChecker()
-result = checker.check('praw', '0.0.1')
+result = checker.check("praw", "0.0.1")
 if result:  # result is None when an update was not found or a failure occured
-   # result is a UpdateResult object that contains the following attributes:
-   # * available_version
-   # * package_name
-   # * running_version
-   # * release_date (is None if the information isn't available)
-   print(result)
-   # Conditionally perform other actions
+    # result is a UpdateResult object that contains the following attributes:
+    # * available_version
+    # * package_name
+    # * running_version
+    # * release_date (is None if the information isn't available)
+    print(result)
+    # Conditionally perform other actions
 ```

@@ -1,24 +1,33 @@
 """Module that checks if there is an updated version of a package available."""
 
-import os
-import pickle
+from __future__ import annotations
+
+import pathlib
+import pickle  # noqa: S403 -- permacache slated for replacement with JSON
 import re
+import string
 import sys
 import time
 from datetime import datetime
 from functools import wraps
 from importlib.metadata import version
 from tempfile import gettempdir
+from typing import TYPE_CHECKING, Any
 
 import requests
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
 
 __version__ = version("update_checker")
 
 
-def cache_results(function):
+def cache_results(  # noqa: C901 -- the nested helpers inflate the count
+    function: Callable[..., UpdateResult | None],
+) -> Callable[..., UpdateResult | None]:
     """Return decorated function that caches the results."""
 
-    def save_to_permacache():
+    def save_to_permacache() -> None:
         """Save the in-memory cache data to the permacache.
 
         There is a race condition here between two processes updating at the
@@ -29,17 +38,17 @@ def cache_results(function):
         """
         update_from_permacache()
         try:
-            with open(filename, "wb") as fp:
+            with filename.open("wb") as fp:
                 pickle.dump(cache, fp, pickle.HIGHEST_PROTOCOL)
-        except IOError:
+        except OSError:
             pass  # Ignore permacache saving exceptions
 
-    def update_from_permacache():
+    def update_from_permacache() -> None:
         """Attempt to update newer items from the permacache."""
         try:
-            with open(filename, "rb") as fp:
-                permacache = pickle.load(fp)
-        except Exception:  # TODO: Handle specific exceptions
+            with filename.open("rb") as fp:
+                permacache = pickle.load(fp)  # noqa: S301 -- slated for JSON
+        except Exception:  # noqa: BLE001 -- unpickling can raise anything
             return  # It's okay if it cannot load
         for key, value in permacache.items():
             if key not in cache or value[0] > cache[key][0]:
@@ -48,17 +57,23 @@ def cache_results(function):
     cache = {}
     cache_expire_time = 3600
     try:
-        filename = os.path.join(gettempdir(), "update_checker_cache.pkl")
+        filename = pathlib.Path(gettempdir()) / "update_checker_cache.pkl"
         update_from_permacache()
     except NotImplementedError:
         filename = None
 
     @wraps(function)
-    def wrapped(obj, package_name, package_version, **extra_data):
+    def wrapped(
+        obj: UpdateChecker,
+        package_name: str,
+        package_version: str,
+        **extra_data: object,
+    ) -> UpdateResult | None:
         """Return cached results if available."""
         now = time.time()
         key = (package_name, package_version)
-        if not obj._bypass_cache and key in cache:  # Check the in-memory cache
+        bypass_cache = obj._bypass_cache  # noqa: SLF001 -- decorator is module-internal
+        if not bypass_cache and key in cache:  # Check the in-memory cache
             cache_time, retval = cache[key]
             if now - cache_time < cache_expire_time:
                 return retval
@@ -71,7 +86,7 @@ def cache_results(function):
     return wrapped
 
 
-def query_pypi(package, include_prereleases):
+def query_pypi(package: str, include_prereleases: bool) -> dict[str, Any]:  # noqa: FBT001 -- established internal call style
     """Return information about the current version of package."""
     try:
         response = requests.get(f"https://pypi.org/pypi/{package}/json", timeout=1)
@@ -98,7 +113,8 @@ def query_pypi(package, include_prereleases):
     return {"success": True, "data": {"upload_time": upload_time, "version": version}}
 
 
-def standard_release(version):
+def standard_release(version: str) -> bool:
+    """Return whether version is a release that is not a pre-release."""
     return version.replace(".", "").isdigit()
 
 
@@ -107,19 +123,30 @@ def standard_release(version):
 class UpdateResult:
     """Contains the information for a package that has an update."""
 
-    def __init__(self, package, running, available, release_date):
+    def __init__(
+        self,
+        package: str,
+        running: str,
+        available: str,
+        release_date: str | None,
+    ) -> None:
         """Initialize an UpdateResult instance."""
         self.available_version = available
         self.package_name = package
         self.running_version = running
         if release_date:
-            self.release_date = datetime.strptime(release_date, "%Y-%m-%dT%H:%M:%S")
+            self.release_date = datetime.strptime(  # noqa: DTZ007 -- becomes aware in #19
+                release_date, "%Y-%m-%dT%H:%M:%S"
+            )
         else:
             self.release_date = None
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Return a printable UpdateResult string."""
-        retval = f"Version {self.running_version} of {self.package_name} is outdated. Version {self.available_version} "
+        retval = (
+            f"Version {self.running_version} of {self.package_name} is outdated. "
+            f"Version {self.available_version} "
+        )
         if self.release_date:
             retval += f"was released {pretty_date(self.release_date)}."
         else:
@@ -130,15 +157,20 @@ class UpdateResult:
 class UpdateChecker:
     """A class to check for package updates."""
 
-    def __init__(self, *, bypass_cache=False):
+    def __init__(self, *, bypass_cache: bool = False) -> None:
+        """Initialize an UpdateChecker instance."""
         self._bypass_cache = bypass_cache
 
     @cache_results
-    def check(self, package_name, package_version):
+    def check(  # noqa: PLR6301 -- part of the public instance API
+        self,
+        package_name: str,
+        package_version: str,
+    ) -> UpdateResult | None:
         """Return a UpdateResult object if there is a newer version."""
-
         data = query_pypi(
-            package_name, include_prereleases=not standard_release(package_version)
+            package_name,
+            include_prereleases=not standard_release(package_version),
         )
 
         if not data.get("success") or (
@@ -154,37 +186,40 @@ class UpdateChecker:
         )
 
 
-def pretty_date(the_datetime):
+def pretty_date(the_datetime: datetime) -> str:  # noqa: PLR0911 -- a return per time bucket
     """Attempt to return a human-readable time delta string."""
     # Source modified from
     # http://stackoverflow.com/a/5164027/176978
-    diff = datetime.utcnow() - the_datetime
+    diff = datetime.utcnow() - the_datetime  # noqa: DTZ003 -- becomes aware in #19
     if diff.days > 7 or diff.days < 0:
         return the_datetime.strftime("%A %B %d, %Y")
-    elif diff.days == 1:
+    if diff.days == 1:
         return "1 day ago"
-    elif diff.days > 1:
+    if diff.days > 1:
         return f"{diff.days} days ago"
-    elif diff.seconds <= 1:
+    if diff.seconds <= 1:
         return "just now"
-    elif diff.seconds < 60:
+    if diff.seconds < 60:
         return f"{diff.seconds} seconds ago"
-    elif diff.seconds < 120:
+    if diff.seconds < 120:
         return "1 minute ago"
-    elif diff.seconds < 3600:
-        return f"{int(round(diff.seconds / 60))} minutes ago"
-    elif diff.seconds < 7200:
+    if diff.seconds < 3600:
+        return f"{round(diff.seconds / 60)} minutes ago"
+    if diff.seconds < 7200:
         return "1 hour ago"
-    else:
-        return f"{int(round(diff.seconds / 3600))} hours ago"
+    return f"{round(diff.seconds / 3600)} hours ago"
 
 
-def update_check(package_name, package_version, bypass_cache=False):
-    """Convenience method that outputs to stderr if an update is available."""
+def update_check(
+    package_name: str,
+    package_version: str,
+    bypass_cache: bool = False,  # noqa: FBT001, FBT002 -- positional for backwards compatibility
+) -> None:
+    """Output to stderr if an update to the package is available."""
     checker = UpdateChecker(bypass_cache=bypass_cache)
     result = checker.check(package_name, package_version)
     if result:
-        print(result, file=sys.stderr)
+        print(result, file=sys.stderr)  # noqa: T201 -- printing is the purpose
 
 
 # The following section of code is taken from setuptools pkg_resources.py (PSF
@@ -195,12 +230,12 @@ component_re = re.compile(r"(\d+ | [a-z]+ | \.| -)", re.VERBOSE)
 replace = {"-": "final-", "dev": "@", "pre": "c", "preview": "c", "rc": "c"}.get
 
 
-def _parse_version_parts(s):
-    for part in component_re.split(s):
-        part = replace(part, part)
+def _parse_version_parts(s: str) -> Iterator[str]:
+    for raw_part in component_re.split(s):
+        part = replace(raw_part, raw_part)
         if not part or part == ".":
             continue
-        if part[:1] in "0123456789":
+        if part[:1] in string.digits:
             yield part.zfill(8)  # pad for numeric comparison
         else:
             yield "*" + part
@@ -208,7 +243,7 @@ def _parse_version_parts(s):
     yield "*final"  # ensure that alpha/beta/candidate are before final
 
 
-def parse_version(s):
+def parse_version(s: str) -> tuple[str, ...]:
     """Convert a version string to a chronologically-sortable key.
 
     This is a rough cross between distutils' StrictVersion and LooseVersion;
