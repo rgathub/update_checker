@@ -1,6 +1,11 @@
 [build-system]
-requires = ["uv_build>=0.8.0,<1.0"]
 build-backend = "uv_build"
+requires = ["uv_build>=0.8.0,<1.0"]
+
+[dependency-groups]
+dev = [{include-group = "lint"}, {include-group = "test"}]
+lint = ["ruff"]
+test = ["pytest"]
 
 [project]
 authors = [{name = "Bryce Boe", email = "bbzbryce@gmail.com"}]
@@ -27,7 +32,5 @@ version = "0.18.0"
 [project.urls]
 Homepage = "https://github.com/bboe/update_checker"
 
-[dependency-groups]
-dev = [{include-group = "lint"}, {include-group = "test"}]
-lint = ["ruff"]
-test = ["pytest"]
+[tool.ruff.lint]
+extend-select = ["I"]
