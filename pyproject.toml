@@ -41,15 +41,13 @@ ignore = [
     "CPY001",  # this project does not use copyright notices
     "D203",  # incompatible with D211
     "D213",  # incompatible with D212
-    "DOC201",  # docstrings do not use Returns sections
-    "PLR2004",  # inline comparison values are clear in context
-    "RUF067",  # the package intentionally lives in __init__.py
 ]
 select = ["ALL"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = [
     "D103",  # test functions do not need docstrings
+    "PLR2004",  # magic values are expected in test assertions
     "INP001",  # the tests directory is intentionally not a package
     "S101",  # pytest relies on assert
 ]
