@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/bboe/update_checker.png)](https://travis-ci.org/bboe/update_checker)
+[![CI](https://github.com/bboe/update_checker/actions/workflows/ci.yml/badge.svg)](https://github.com/bboe/update_checker/actions/workflows/ci.yml)
 
 # update_checker
 
