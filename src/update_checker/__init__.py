@@ -7,11 +7,12 @@ import sys
 import time
 from datetime import datetime
 from functools import wraps
+from importlib.metadata import version
 from tempfile import gettempdir
 
 import requests
 
-__version__ = "0.18.0"
+__version__ = version("update_checker")
 
 
 def cache_results(function):
