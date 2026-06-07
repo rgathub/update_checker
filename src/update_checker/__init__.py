@@ -3,14 +3,16 @@
 import os
 import pickle
 import re
-import requests
 import sys
 import time
 from datetime import datetime
 from functools import wraps
+from importlib.metadata import version
 from tempfile import gettempdir
 
-__version__ = "0.18.0"
+import requests
+
+__version__ = version("update_checker")
 
 
 def cache_results(function):
@@ -190,7 +192,7 @@ def update_check(package_name, package_version, bypass_cache=False):
 # parse_version function results in some undesired side effects.
 
 component_re = re.compile(r"(\d+ | [a-z]+ | \.| -)", re.VERBOSE)
-replace = {"pre": "c", "preview": "c", "-": "final-", "rc": "c", "dev": "@"}.get
+replace = {"-": "final-", "dev": "@", "pre": "c", "preview": "c", "rc": "c"}.get
 
 
 def _parse_version_parts(s):
