@@ -12,7 +12,7 @@ with open(f"{MODULE_NAME}.py") as fp:
 
 extras = {
     "dev": [],
-    "lint": ["black", "flake8"],
+    "lint": ["ruff"],
     "test": ["pytest >=2.7.3"],
 }
 extras["dev"] += extras["lint"] + extras["test"]

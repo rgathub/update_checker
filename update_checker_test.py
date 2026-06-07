@@ -3,7 +3,6 @@ from unittest import mock
 import requests
 from update_checker import UpdateChecker, update_check
 
-
 PACKAGE = "praw"
 
 
