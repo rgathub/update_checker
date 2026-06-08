@@ -1,4 +1,4 @@
-"""Implementation of the update_checker package."""
+"""Core implementation of the update_checker package."""
 
 from __future__ import annotations
 
@@ -29,6 +29,7 @@ SECONDS_PER_MINUTE = 60
 
 def cache_results(  # noqa: C901 -- the nested helpers inflate the count
     function: Callable[..., UpdateResult | None],
+    /,
 ) -> Callable[..., UpdateResult | None]:
     """Return decorated function that caches the results.
 
@@ -75,6 +76,7 @@ def cache_results(  # noqa: C901 -- the nested helpers inflate the count
     @wraps(function)
     def wrapped(
         obj: UpdateChecker,
+        *,
         package_name: str,
         package_version: str,
         **extra_data: object,
@@ -92,7 +94,12 @@ def cache_results(  # noqa: C901 -- the nested helpers inflate the count
             cache_time, retval = cache[key]
             if now - cache_time < cache_expire_time:
                 return retval
-        retval = function(obj, package_name, package_version, **extra_data)
+        retval = function(
+            obj,
+            package_name=package_name,
+            package_version=package_version,
+            **extra_data,
+        )
         cache[key] = now, retval
         if filename:
             save_to_permacache()
@@ -101,7 +108,7 @@ def cache_results(  # noqa: C901 -- the nested helpers inflate the count
     return wrapped
 
 
-def query_pypi(package: str, include_prereleases: bool) -> dict[str, Any]:  # noqa: FBT001 -- established internal call style
+def query_pypi(*, include_prereleases: bool, package: str) -> dict[str, Any]:
     """Return information about the current version of package.
 
     Returns:
@@ -134,7 +141,7 @@ def query_pypi(package: str, include_prereleases: bool) -> dict[str, Any]:  # no
     return {"success": True, "data": {"upload_time": upload_time, "version": version}}
 
 
-def standard_release(version: str) -> bool:
+def standard_release(version: str, /) -> bool:
     """Return whether version is a release that is not a pre-release.
 
     Returns:
@@ -151,10 +158,11 @@ class UpdateResult:
 
     def __init__(
         self,
-        package: str,
-        running: str,
+        *,
         available: str,
+        package: str,
         release_date: str | None,
+        running: str,
     ) -> None:
         """Initialize an UpdateResult instance."""
         self.available_version = available
@@ -195,6 +203,7 @@ class UpdateChecker:
     @cache_results
     def check(  # noqa: PLR6301 -- part of the public instance API
         self,
+        *,
         package_name: str,
         package_version: str,
     ) -> UpdateResult | None:
@@ -206,8 +215,8 @@ class UpdateChecker:
 
         """
         data = query_pypi(
-            package_name,
             include_prereleases=not standard_release(package_version),
+            package=package_name,
         )
 
         if not data.get("success") or (
@@ -216,14 +225,14 @@ class UpdateChecker:
             return None
 
         return UpdateResult(
-            package_name,
-            running=package_version,
             available=data["data"]["version"],
+            package=package_name,
             release_date=data["data"]["upload_time"],
+            running=package_version,
         )
 
 
-def pretty_date(the_datetime: datetime) -> str:  # noqa: PLR0911 -- a return per time bucket
+def pretty_date(the_datetime: datetime, /) -> str:  # noqa: PLR0911 -- a return per time bucket
     """Attempt to return a human-readable time delta string.
 
     Returns:
@@ -256,11 +265,15 @@ def pretty_date(the_datetime: datetime) -> str:  # noqa: PLR0911 -- a return per
 def update_check(
     package_name: str,
     package_version: str,
-    bypass_cache: bool = False,  # noqa: FBT001, FBT002 -- positional for backwards compatibility
+    *,
+    bypass_cache: bool = False,
 ) -> None:
     """Output to stderr if an update to the package is available."""
     checker = UpdateChecker(bypass_cache=bypass_cache)
-    result = checker.check(package_name, package_version)
+    result = checker.check(
+        package_name=package_name,
+        package_version=package_version,
+    )
     if result:
         print(result, file=sys.stderr)  # noqa: T201 -- printing is the purpose
 
@@ -273,7 +286,7 @@ component_re = re.compile(r"(\d+ | [a-z]+ | \.| -)", re.VERBOSE)
 replace = {"-": "final-", "dev": "@", "pre": "c", "preview": "c", "rc": "c"}.get
 
 
-def _parse_version_parts(s: str) -> Iterator[str]:
+def _parse_version_parts(s: str, /) -> Iterator[str]:
     for raw_part in component_re.split(s):
         part = replace(raw_part, raw_part)
         if not part or part == ".":
@@ -286,7 +299,7 @@ def _parse_version_parts(s: str) -> Iterator[str]:
     yield "*final"  # ensure that alpha/beta/candidate are before final
 
 
-def parse_version(s: str) -> tuple[str, ...]:
+def parse_version(s: str, /) -> tuple[str, ...]:
     """Convert a version string to a chronologically-sortable key.
 
     This is a rough cross between distutils' StrictVersion and LooseVersion;

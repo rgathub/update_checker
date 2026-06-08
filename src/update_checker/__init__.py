@@ -1,6 +1,6 @@
 """Module that checks if there is an updated version of a package available."""
 
-from update_checker._update_checker import (
+from update_checker.core import (
     UpdateChecker,
     UpdateResult,
     __version__,
