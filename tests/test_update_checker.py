@@ -25,6 +25,21 @@ def test_checker_check__no_update_to_beta_version(mock_get: mock.MagicMock) -> N
 
 
 @mock.patch("requests.get")
+def test_checker_check__successful(mock_get: mock.MagicMock) -> None:
+    mock_response(response=mock_get.return_value)
+    checker = UpdateChecker(bypass_cache=True)
+    result = checker.check(package_name=PACKAGE, package_version="1.0.0")
+    assert result.available_version == "5.0.0"
+
+
+@mock.patch("requests.get")
+def test_checker_check__unsuccessful(mock_get: mock.MagicMock) -> None:
+    mock_get.side_effect = requests.exceptions.RequestException
+    checker = UpdateChecker(bypass_cache=True)
+    assert checker.check(package_name=PACKAGE, package_version="1.0.0") is None
+
+
+@mock.patch("requests.get")
 def test_checker_check__update_to_beta_version_from_beta_version(
     mock_get: mock.MagicMock,
 ) -> None:
@@ -42,21 +57,6 @@ def test_checker_check__update_to_rc_version_from_beta_version(
     checker = UpdateChecker(bypass_cache=True)
     result = checker.check(package_name=PACKAGE, package_version="4.0.0b4")
     assert result.available_version == "4.0.0rc1"
-
-
-@mock.patch("requests.get")
-def test_checker_check__successful(mock_get: mock.MagicMock) -> None:
-    mock_response(response=mock_get.return_value)
-    checker = UpdateChecker(bypass_cache=True)
-    result = checker.check(package_name=PACKAGE, package_version="1.0.0")
-    assert result.available_version == "5.0.0"
-
-
-@mock.patch("requests.get")
-def test_checker_check__unsuccessful(mock_get: mock.MagicMock) -> None:
-    mock_get.side_effect = requests.exceptions.RequestException
-    checker = UpdateChecker(bypass_cache=True)
-    assert checker.check(package_name=PACKAGE, package_version="1.0.0") is None
 
 
 @mock.patch("requests.get")

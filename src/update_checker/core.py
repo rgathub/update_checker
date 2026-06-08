@@ -22,9 +22,79 @@ if TYPE_CHECKING:
 
 __version__ = version("update_checker")
 
+# COMPONENT_RE and REPLACE support parse_version near the bottom of this module
+COMPONENT_RE = re.compile(r"(\d+ | [a-z]+ | \.| -)", re.VERBOSE)
 DAYS_PER_WEEK = 7
+REPLACE = {"-": "final-", "dev": "@", "pre": "c", "preview": "c", "rc": "c"}.get
 SECONDS_PER_HOUR = 3600
 SECONDS_PER_MINUTE = 60
+
+
+class UpdateChecker:
+    """A class to check for package updates."""
+
+    def __init__(self, *, bypass_cache: bool = False) -> None:
+        """Initialize an UpdateChecker instance."""
+        self._bypass_cache = bypass_cache
+
+    def check(
+        self,
+        *,
+        package_name: str,
+        package_version: str,
+    ) -> UpdateResult | None:
+        """Return a UpdateResult object if there is a newer version.
+
+        Returns:
+            An UpdateResult instance when a newer version exists, otherwise
+            None.
+
+        """
+        return _check(
+            bypass_cache=self._bypass_cache,
+            package_name=package_name,
+            package_version=package_version,
+        )
+
+
+class UpdateResult:
+    """Contains the information for a package that has an update."""
+
+    def __init__(
+        self,
+        *,
+        available: str,
+        package: str,
+        release_date: str | None,
+        running: str,
+    ) -> None:
+        """Initialize an UpdateResult instance."""
+        self.available_version = available
+        self.package_name = package
+        self.running_version = running
+        if release_date:
+            self.release_date = datetime.strptime(  # noqa: DTZ007 -- becomes aware in #19
+                release_date, "%Y-%m-%dT%H:%M:%S"
+            )
+        else:
+            self.release_date = None
+
+    def __str__(self) -> str:
+        """Return a printable UpdateResult string.
+
+        Returns:
+            A sentence describing the outdated package and newer version.
+
+        """
+        retval = (
+            f"Version {self.running_version} of {self.package_name} is outdated. "
+            f"Version {self.available_version} "
+        )
+        if self.release_date:
+            retval += f"was released {pretty_date(self.release_date)}."
+        else:
+            retval += "is available."
+        return retval
 
 
 def cache_results(  # noqa: C901 -- the nested helpers inflate the count
@@ -32,6 +102,10 @@ def cache_results(  # noqa: C901 -- the nested helpers inflate the count
     /,
 ) -> Callable[..., UpdateResult | None]:
     """Return decorated function that caches the results.
+
+    Note: the classes above must be defined before this decorator is applied
+    so that loading the permacache at decoration time can unpickle their
+    instances.
 
     Returns:
         The decorated function.
@@ -75,8 +149,8 @@ def cache_results(  # noqa: C901 -- the nested helpers inflate the count
 
     @wraps(function)
     def wrapped(
-        obj: UpdateChecker,
         *,
+        bypass_cache: bool = False,
         package_name: str,
         package_version: str,
         **extra_data: object,
@@ -89,13 +163,11 @@ def cache_results(  # noqa: C901 -- the nested helpers inflate the count
         """
         now = time.time()
         key = (package_name, package_version)
-        bypass_cache = obj._bypass_cache  # noqa: SLF001 -- decorator is module-internal
         if not bypass_cache and key in cache:  # Check the in-memory cache
             cache_time, retval = cache[key]
             if now - cache_time < cache_expire_time:
                 return retval
         retval = function(
-            obj,
             package_name=package_name,
             package_version=package_version,
             **extra_data,
@@ -108,195 +180,30 @@ def cache_results(  # noqa: C901 -- the nested helpers inflate the count
     return wrapped
 
 
-def query_pypi(*, include_prereleases: bool, package: str) -> dict[str, Any]:
-    """Return information about the current version of package.
-
-    Returns:
-        A dict with a "success" key. On success, a "data" key maps to a dict
-        with "version" and "upload_time" keys.
-
-    """
-    try:
-        response = requests.get(f"https://pypi.org/pypi/{package}/json", timeout=1)
-    except requests.exceptions.RequestException:
-        return {"success": False}
-    if response.status_code != HTTPStatus.OK:
-        return {"success": False}
-    data = response.json()
-    versions = list(data["releases"].keys())
-    versions.sort(key=parse_version, reverse=True)
-
-    version = versions[0]
-    for tmp_version in versions:
-        if include_prereleases or standard_release(tmp_version):
-            version = tmp_version
-            break
-
-    upload_time = None
-    for file_info in data["releases"][version]:
-        if file_info["upload_time"]:
-            upload_time = file_info["upload_time"]
-            break
-
-    return {"success": True, "data": {"upload_time": upload_time, "version": version}}
-
-
-def standard_release(version: str, /) -> bool:
-    """Return whether version is a release that is not a pre-release.
-
-    Returns:
-        True when version contains only dot-separated digits.
-
-    """
-    return version.replace(".", "").isdigit()
-
-
-# This class must be defined before UpdateChecker in order to unpickle objects
-# of this type
-class UpdateResult:
-    """Contains the information for a package that has an update."""
-
-    def __init__(
-        self,
-        *,
-        available: str,
-        package: str,
-        release_date: str | None,
-        running: str,
-    ) -> None:
-        """Initialize an UpdateResult instance."""
-        self.available_version = available
-        self.package_name = package
-        self.running_version = running
-        if release_date:
-            self.release_date = datetime.strptime(  # noqa: DTZ007 -- becomes aware in #19
-                release_date, "%Y-%m-%dT%H:%M:%S"
-            )
-        else:
-            self.release_date = None
-
-    def __str__(self) -> str:
-        """Return a printable UpdateResult string.
-
-        Returns:
-            A sentence describing the outdated package and newer version.
-
-        """
-        retval = (
-            f"Version {self.running_version} of {self.package_name} is outdated. "
-            f"Version {self.available_version} "
-        )
-        if self.release_date:
-            retval += f"was released {pretty_date(self.release_date)}."
-        else:
-            retval += "is available."
-        return retval
-
-
-class UpdateChecker:
-    """A class to check for package updates."""
-
-    def __init__(self, *, bypass_cache: bool = False) -> None:
-        """Initialize an UpdateChecker instance."""
-        self._bypass_cache = bypass_cache
-
-    @cache_results
-    def check(  # noqa: PLR6301 -- part of the public instance API
-        self,
-        *,
-        package_name: str,
-        package_version: str,
-    ) -> UpdateResult | None:
-        """Return a UpdateResult object if there is a newer version.
-
-        Returns:
-            An UpdateResult instance when a newer version exists, otherwise
-            None.
-
-        """
-        data = query_pypi(
-            include_prereleases=not standard_release(package_version),
-            package=package_name,
-        )
-
-        if not data.get("success") or (
-            parse_version(package_version) >= parse_version(data["data"]["version"])
-        ):
-            return None
-
-        return UpdateResult(
-            available=data["data"]["version"],
-            package=package_name,
-            release_date=data["data"]["upload_time"],
-            running=package_version,
-        )
-
-
-def pretty_date(the_datetime: datetime, /) -> str:  # noqa: PLR0911 -- a return per time bucket
-    """Attempt to return a human-readable time delta string.
-
-    Returns:
-        A human-readable relative time, e.g., "3 days ago", or the formatted
-        date when more than a week old.
-
-    """
-    # Source modified from
-    # http://stackoverflow.com/a/5164027/176978
-    diff = datetime.utcnow() - the_datetime  # noqa: DTZ003 -- becomes aware in #19
-    if diff.days > DAYS_PER_WEEK or diff.days < 0:
-        return the_datetime.strftime("%A %B %d, %Y")
-    if diff.days == 1:
-        return "1 day ago"
-    if diff.days > 1:
-        return f"{diff.days} days ago"
-    if diff.seconds <= 1:
-        return "just now"
-    if diff.seconds < SECONDS_PER_MINUTE:
-        return f"{diff.seconds} seconds ago"
-    if diff.seconds < 2 * SECONDS_PER_MINUTE:
-        return "1 minute ago"
-    if diff.seconds < SECONDS_PER_HOUR:
-        return f"{round(diff.seconds / SECONDS_PER_MINUTE)} minutes ago"
-    if diff.seconds < 2 * SECONDS_PER_HOUR:
-        return "1 hour ago"
-    return f"{round(diff.seconds / SECONDS_PER_HOUR)} hours ago"
-
-
-def update_check(
-    package_name: str,
-    package_version: str,
-    *,
-    bypass_cache: bool = False,
-) -> None:
-    """Output to stderr if an update to the package is available."""
-    checker = UpdateChecker(bypass_cache=bypass_cache)
-    result = checker.check(
-        package_name=package_name,
-        package_version=package_version,
+@cache_results
+def _check(*, package_name: str, package_version: str) -> UpdateResult | None:
+    data = query_pypi(
+        include_prereleases=not standard_release(package_version),
+        package=package_name,
     )
-    if result:
-        print(result, file=sys.stderr)  # noqa: T201 -- printing is the purpose
+
+    if not data.get("success") or (
+        parse_version(package_version) >= parse_version(data["data"]["version"])
+    ):
+        return None
+
+    return UpdateResult(
+        available=data["data"]["version"],
+        package=package_name,
+        release_date=data["data"]["upload_time"],
+        running=package_version,
+    )
 
 
-# The following section of code is taken from setuptools pkg_resources.py (PSF
-# license). Unfortunately importing pkg_resources to directly use the
+# The following two functions are taken from setuptools pkg_resources.py (PSF
+# license), along with the COMPONENT_RE and REPLACE constants near the top of
+# this module. Unfortunately importing pkg_resources to directly use the
 # parse_version function results in some undesired side effects.
-
-component_re = re.compile(r"(\d+ | [a-z]+ | \.| -)", re.VERBOSE)
-replace = {"-": "final-", "dev": "@", "pre": "c", "preview": "c", "rc": "c"}.get
-
-
-def _parse_version_parts(s: str, /) -> Iterator[str]:
-    for raw_part in component_re.split(s):
-        part = replace(raw_part, raw_part)
-        if not part or part == ".":
-            continue
-        if part[:1] in string.digits:
-            yield part.zfill(8)  # pad for numeric comparison
-        else:
-            yield "*" + part
-
-    yield "*final"  # ensure that alpha/beta/candidate are before final
 
 
 def parse_version(s: str, /) -> tuple[str, ...]:
@@ -345,3 +252,105 @@ def parse_version(s: str, /) -> tuple[str, ...]:
                 parts.pop()
         parts.append(part)
     return tuple(parts)
+
+
+def _parse_version_parts(s: str, /) -> Iterator[str]:
+    for raw_part in COMPONENT_RE.split(s):
+        part = REPLACE(raw_part, raw_part)
+        if not part or part == ".":
+            continue
+        if part[:1] in string.digits:
+            yield part.zfill(8)  # pad for numeric comparison
+        else:
+            yield "*" + part
+
+    yield "*final"  # ensure that alpha/beta/candidate are before final
+
+
+def pretty_date(the_datetime: datetime, /) -> str:  # noqa: PLR0911 -- a return per time bucket
+    """Attempt to return a human-readable time delta string.
+
+    Returns:
+        A human-readable relative time, e.g., "3 days ago", or the formatted
+        date when more than a week old.
+
+    """
+    # Source modified from
+    # http://stackoverflow.com/a/5164027/176978
+    diff = datetime.utcnow() - the_datetime  # noqa: DTZ003 -- becomes aware in #19
+    if diff.days > DAYS_PER_WEEK or diff.days < 0:
+        return the_datetime.strftime("%A %B %d, %Y")
+    if diff.days == 1:
+        return "1 day ago"
+    if diff.days > 1:
+        return f"{diff.days} days ago"
+    if diff.seconds <= 1:
+        return "just now"
+    if diff.seconds < SECONDS_PER_MINUTE:
+        return f"{diff.seconds} seconds ago"
+    if diff.seconds < 2 * SECONDS_PER_MINUTE:
+        return "1 minute ago"
+    if diff.seconds < SECONDS_PER_HOUR:
+        return f"{round(diff.seconds / SECONDS_PER_MINUTE)} minutes ago"
+    if diff.seconds < 2 * SECONDS_PER_HOUR:
+        return "1 hour ago"
+    return f"{round(diff.seconds / SECONDS_PER_HOUR)} hours ago"
+
+
+def query_pypi(*, include_prereleases: bool, package: str) -> dict[str, Any]:
+    """Return information about the current version of package.
+
+    Returns:
+        A dict with a "success" key. On success, a "data" key maps to a dict
+        with "version" and "upload_time" keys.
+
+    """
+    try:
+        response = requests.get(f"https://pypi.org/pypi/{package}/json", timeout=1)
+    except requests.exceptions.RequestException:
+        return {"success": False}
+    if response.status_code != HTTPStatus.OK:
+        return {"success": False}
+    data = response.json()
+    versions = list(data["releases"].keys())
+    versions.sort(key=parse_version, reverse=True)
+
+    version = versions[0]
+    for tmp_version in versions:
+        if include_prereleases or standard_release(tmp_version):
+            version = tmp_version
+            break
+
+    upload_time = None
+    for file_info in data["releases"][version]:
+        if file_info["upload_time"]:
+            upload_time = file_info["upload_time"]
+            break
+
+    return {"success": True, "data": {"upload_time": upload_time, "version": version}}
+
+
+def standard_release(version: str, /) -> bool:
+    """Return whether version is a release that is not a pre-release.
+
+    Returns:
+        True when version contains only dot-separated digits.
+
+    """
+    return version.replace(".", "").isdigit()
+
+
+def update_check(
+    package_name: str,
+    package_version: str,
+    *,
+    bypass_cache: bool = False,
+) -> None:
+    """Output to stderr if an update to the package is available."""
+    checker = UpdateChecker(bypass_cache=bypass_cache)
+    result = checker.check(
+        package_name=package_name,
+        package_version=package_version,
+    )
+    if result:
+        print(result, file=sys.stderr)  # noqa: T201 -- printing is the purpose
